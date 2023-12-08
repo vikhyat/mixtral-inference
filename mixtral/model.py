@@ -135,7 +135,6 @@ class FeedForward(nn.Module):
         mask.scatter_(1, top_two.indices, False)
         g[mask] = -1e9
         g = torch.softmax(g, dim=-1).to(x.dtype)
-        print(g)
         return sum(g[..., i:i+1] * expert(x) for i, expert in enumerate(self.experts))
 
 class FeedForwardExpert(nn.Module):
@@ -278,5 +277,5 @@ class Transformer(nn.Module):
         model_args.max_batch_size = max_batch_size
         model = Transformer(model_args, devices=['cuda:0', 'cuda:1', 'cuda:2', 'cuda:3', 'cuda:4', 'cuda:5', 'cuda:6', 'cuda:7'], dtype=dtype)
         loaded = torch.load(folder / 'consolidated.00.pth')
-        model.load_state_dict(loaded, strict=False)
+        model.load_state_dict(loaded)
         return model
