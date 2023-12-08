@@ -39,11 +39,10 @@ def generate(prompts: List[str], model: Transformer, tokenizer: Tokenizer, *, ma
     seqlens = [len(x) for x in encoded_prompts]
 
     # Cache
-    # cache_window = max(seqlens) + max_tokens
-    # cache = RotatingBufferCache(model.args.n_layers, model.args.max_batch_size, cache_window, model.args.n_kv_heads, model.args.head_dim)
-    # cache.to(device=model.device, dtype=model.dtype)
-    # cache.reset()
-    cache = None
+    cache_window = max(seqlens) + max_tokens
+    cache = RotatingBufferCache(model.args.n_layers, model.args.max_batch_size, cache_window, model.args.n_kv_heads, model.args.head_dim)
+    cache.to(device=model.device, dtype=model.dtype)
+    cache.reset()
     
     # Bookkeeping
     logprobs = [[] for _ in range(B)]
@@ -137,4 +136,6 @@ def demo(model_path: str, max_tokens: int = 35, temperature: float = 0):
         print("=====================")
 
 if __name__ == "__main__":
-    interactive('mixtral-8x7b-32kseqlen', devices=['cuda:0', 'cuda:1', 'cuda:2', 'cuda:3', 'cuda:4', 'cuda:5', 'cuda:6', 'cuda:7'])
+    interactive('mixtral-8x7b-32kseqlen',
+                devices=['cuda:0', 'cuda:1', 'cuda:2', 'cuda:3',
+                         'cuda:4', 'cuda:5', 'cuda:6', 'cuda:7'])

@@ -1,6 +1,6 @@
 # mixtral-inference
 
-Inference code for the Mistral's "mixtral" 8x7B mixture of experts model. Largely based on the [Mistral 7B inference repository](https://github.com/mistralai/mistral-src/tree/main). Requires ~320GB of VRAM.
+Inference code for the Mistral's "mixtral" 8x7B mixture of experts model. Largely based on the [Mistral 7B inference repository](https://github.com/mistralai/mistral-src/tree/main). Requires ~100GB of VRAM.
 
 ### Dependencies
 

@@ -99,6 +99,9 @@ class Attention(nn.Module):
         xv = xv.view(seqlen_sum, self.n_kv_heads, self.args.head_dim)
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
+        xk = xk.to('cuda:0')
+        xv = xv.to('cuda:0')
+
         if cache is None:
             key, val = xk, xv
         elif cache.prefill:
@@ -109,6 +112,8 @@ class Attention(nn.Module):
             key, val = cache.key, cache.value
             key = key.view(seqlen_sum * cache.sliding_window, self.n_kv_heads, self.args.head_dim)
             val = val.view(seqlen_sum * cache.sliding_window, self.n_kv_heads, self.args.head_dim)
+
+        key, val = key.to(x.device), val.to(x.device)
 
         # Repeat keys and values to match number of query heads
         key, val = repeat_kv(key, val, self.repeats, dim=1)
@@ -275,7 +280,7 @@ class Transformer(nn.Module):
         with open(folder / 'params.json', 'r') as f:
             model_args = ModelArgs(**json.loads(f.read()))
         model_args.max_batch_size = max_batch_size
-        model = Transformer(model_args, devices=['cuda:0', 'cuda:1', 'cuda:2', 'cuda:3', 'cuda:4', 'cuda:5', 'cuda:6', 'cuda:7'], dtype=dtype)
+        model = Transformer(model_args, devices, dtype=dtype)
         loaded = torch.load(folder / 'consolidated.00.pth')
         model.load_state_dict(loaded)
         return model
