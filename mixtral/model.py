@@ -53,7 +53,7 @@ def repeat_kv(keys: torch.Tensor, values: torch.Tensor, repeats: int, dim: int):
 
 
 class Attention(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, device='cuda', dtype=torch.float16):
         super().__init__()
         self.args = args
 
@@ -67,23 +67,35 @@ class Attention(nn.Module):
         self.wq = nn.Linear(
             args.dim,
             args.n_heads * args.head_dim,
-            bias=False
+            bias=False,
+            device='meta',
+            dtype=dtype
         )
+        self.wq.to_empty(device=device)
         self.wk = nn.Linear(
             args.dim,
             args.n_kv_heads * args.head_dim,
-            bias=False
+            bias=False,
+            device='meta',
+            dtype=dtype
         )
+        self.wk.to_empty(device=device)
         self.wv = nn.Linear(
             args.dim,
             args.n_kv_heads * args.head_dim,
-            bias=False
+            bias=False,
+            device='meta',
+            dtype=dtype
         )
+        self.wv.to_empty(device=device)
         self.wo = nn.Linear(
             args.n_heads * args.head_dim,
             args.dim,
-            bias=False
+            bias=False,
+            device='meta',
+            dtype=dtype
         )
+        self.wo.to_empty(device=device)
         
 
     def forward(
@@ -125,12 +137,13 @@ class Attention(nn.Module):
         return self.wo(output.view_as(x))
 
 class FeedForward(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, device='cuda', dtype=torch.float16):
         super().__init__()
         
-        self.gate = nn.Linear(args.dim, args.moe['num_experts'], bias=False)
+        self.gate = nn.Linear(args.dim, args.moe['num_experts'], bias=False, device='meta', dtype=dtype)
+        self.gate.to_empty(device=device)
         self.experts = torch.nn.ModuleList(
-            [FeedForwardExpert(args) for _ in range(args.moe['num_experts'])]
+            [FeedForwardExpert(args, device=device, dtype=dtype) for _ in range(args.moe['num_experts'])]
         )
 
     def forward(self, x) -> torch.Tensor:
@@ -143,24 +156,33 @@ class FeedForward(nn.Module):
         return sum(g[..., i:i+1] * expert(x) for i, expert in enumerate(self.experts))
 
 class FeedForwardExpert(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, device='cuda', dtype=torch.float16):
         super().__init__()
 
         self.w1 = nn.Linear(
             args.dim,
             args.hidden_dim,
-            bias=False
+            bias=False,
+            device='meta',
+            dtype=dtype
         )
+        self.w1.to_empty(device=device)
         self.w2 = nn.Linear(
             args.hidden_dim,
             args.dim,
-            bias=False
+            bias=False,
+            device='meta',
+            dtype=dtype
         )
+        self.w2.to_empty(device=device)
         self.w3 = nn.Linear(
             args.dim,
             args.hidden_dim,
-            bias=False
+            bias=False,
+            device='meta',
+            dtype=dtype
         )
+        self.w3.to_empty(device=device)
 
     def forward(self, x) -> torch.Tensor:
         return self.w2(nn.functional.silu(self.w1(x)) * self.w3(x))
@@ -181,14 +203,14 @@ class RMSNorm(torch.nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, device='cuda', dtype=torch.float16):
         super().__init__()
         self.n_heads = args.n_heads
         self.dim = args.dim
-        self.attention = Attention(args)
-        self.feed_forward = FeedForward(args=args)
-        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
+        self.attention = Attention(args, device=device, dtype=dtype)
+        self.feed_forward = FeedForward(args=args, device=device, dtype=dtype)
+        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps).to(device, dtype=dtype)
+        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps).to(device, dtype=dtype)
         self.args = args
 
     def forward(
@@ -212,11 +234,12 @@ class Transformer(nn.Module):
         self.n_layers = args.n_layers
         assert self.vocab_size > 0
 
-        self.tok_embeddings = nn.Embedding(args.vocab_size, args.dim).to(devices[0], dtype=dtype)
+        self.tok_embeddings = nn.Embedding(args.vocab_size, args.dim, device='meta', dtype=dtype)
+        self.tok_embeddings.to_empty(device=devices[0])
 
         self.layers = torch.nn.ModuleList(
             [
-                TransformerBlock(args=args).to(devices[(i * len(devices)) // args.n_layers], dtype=dtype)
+                TransformerBlock(args=args, device=devices[(i * len(devices)) // args.n_layers], dtype=dtype)
                 for i in range(args.n_layers)
             ]
         )
@@ -226,8 +249,11 @@ class Transformer(nn.Module):
         self.output = nn.Linear(
             args.dim,
             args.vocab_size,
-            bias=False
-        ).to(devices[0], dtype=dtype)
+            bias=False,
+            device='meta',
+            dtype=dtype
+        )
+        self.output.to_empty(device=devices[0])
 
         self.freqs_cis = precompute_freqs_cis(self.args.head_dim, 128_000, 1e6).to(devices[0])
 
