@@ -229,7 +229,7 @@ class Transformer(nn.Module):
             bias=False
         ).to(devices[0], dtype=dtype)
 
-        self.freqs_cis = precompute_freqs_cis(self.args.head_dim, 128_000).to(devices[0])
+        self.freqs_cis = precompute_freqs_cis(self.args.head_dim, 128_000, 1e6).to(devices[0])
 
     @property
     def dtype(self) -> torch.dtype:
