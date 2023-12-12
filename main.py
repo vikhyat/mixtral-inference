@@ -30,7 +30,7 @@ def sample(logits: torch.Tensor, temperature: float, top_p: float):
 
 
 @torch.inference_mode()
-def generate(prompts: List[str], model: Transformer, tokenizer: Tokenizer, *, max_tokens: int, chunk_size: int = None, temperature: float = 0.7):
+def generate(prompts: List[str], model: Transformer, tokenizer: Tokenizer, *, max_tokens: int, chunk_size: int = None, temperature: float = 0.7, stdout=False):
     model = model.eval()
     B, V = len(prompts), model.args.vocab_size
 
@@ -78,6 +78,10 @@ def generate(prompts: List[str], model: Transformer, tokenizer: Tokenizer, *, ma
         last_token_prelogits = prelogits.index_select(0, torch.tensor([len(p) for p in prompt_chunks], device=prelogits.device).cumsum(dim=0) - 1)
         assert last_token_prelogits.shape == (B, V)
 
+    if stdout:
+        prev_output = tokenizer.decode(encoded_prompts)[0]
+        print(tokenizer.decode(encoded_prompts)[0], end='', flush=True)
+
     # decode
     generated_tokens = []
     for i_token in range(max_tokens):
@@ -88,6 +92,11 @@ def generate(prompts: List[str], model: Transformer, tokenizer: Tokenizer, *, ma
             logprobs[i].append(last_token_logits[i, next_token[i]].item())
 
         generated_tokens.append(next_token[:, None])
+        if stdout:
+            new_output = tokenizer.decode(encoded_prompts[0] + torch.cat(generated_tokens, 1)[0].tolist())
+            print(new_output[len(prev_output):], end='', flush=True)
+            prev_output = new_output
+            # print(stdout_decoder(next_token[:, None].tolist()[0], skip_special_tokens=False), end='', flush=True)
         last_token_prelogits = model.forward(next_token, seqlens=[1] * len(prompts), cache=cache)
         assert last_token_prelogits.shape == (B, V)
 
@@ -100,40 +109,25 @@ def generate(prompts: List[str], model: Transformer, tokenizer: Tokenizer, *, ma
     return generated_words, logprobs
 
 
-def interactive(model_path: str, max_tokens: int = 35, temperature: float = 0.7, devices=['cuda']):
+def interactive(model_path: str, max_tokens: int = 60, temperature: float = 0.7, devices=['cuda']):
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size=3, devices=devices)
 
     while True:
-        prompt = input("Prompt: ")
-        res, _logprobs = generate(
+        try:
+            prompt = input('> ')
+        except EOFError:
+            exit(0)
+
+        generate(
             [prompt],
             transformer,
             tokenizer,
             max_tokens=max_tokens,
             temperature=temperature,
+            stdout=True
         )
-        print(res[0])
-        print("=====================")
-
-def demo(model_path: str, max_tokens: int = 35, temperature: float = 0):
-    tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
-    transformer = Transformer.from_folder(Path(model_path), max_batch_size=3)
-
-    res, _logprobs = generate(
-        [
-            "This is a test",
-            "This is another test",
-            "This is a third test, mistral AI is very good at testing. ",
-        ],
-        transformer,
-        tokenizer,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    for x in res:
-        print(x)
-        print("=====================")
+        print("\n=====================")
 
 if __name__ == "__main__":
     interactive('mixtral-8x7b-32kseqlen',
