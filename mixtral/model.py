@@ -140,20 +140,28 @@ class FeedForward(nn.Module):
     def __init__(self, args: ModelArgs, device='cuda', dtype=torch.float16):
         super().__init__()
         
-        self.gate = nn.Linear(args.dim, args.moe['num_experts'], bias=False, device='meta', dtype=dtype)
+        self.gate = nn.Linear(args.dim, args.moe['num_experts'],
+                              bias=False, device='meta', dtype=dtype)
         self.gate.to_empty(device=device)
+
         self.experts = torch.nn.ModuleList(
-            [FeedForwardExpert(args, device=device, dtype=dtype) for _ in range(args.moe['num_experts'])]
+            [FeedForwardExpert(args, device=device, dtype=dtype)
+             for _ in range(args.moe['num_experts'])]
         )
 
     def forward(self, x) -> torch.Tensor:
-        g = self.gate(x).to(torch.float32)
-        top_two = torch.topk(g, 2, dim=-1)
-        mask = torch.ones_like(g).bool()
-        mask.scatter_(1, top_two.indices, False)
-        g[mask] = -1e9
-        g = torch.softmax(g, dim=-1).to(x.dtype)
-        return sum(g[..., i:i+1] * expert(x) for i, expert in enumerate(self.experts))
+        g = self.gate(x)
+        g = torch.softmax(g, dim=-1)
+        weights, expert_indices = torch.topk(g, 2, dim=-1)
+        weights /= weights.sum(dim=-1, keepdim=True)
+
+        result = torch.zeros_like(x)
+        for batch in range(x.shape[0]):
+            w_b, ei_b = weights[batch], expert_indices[batch]
+            for i, w in zip(ei_b, w_b):
+                result[batch] += w * self.experts[i](x[batch])
+
+        return result
 
 class FeedForwardExpert(nn.Module):
     def __init__(self, args: ModelArgs, device='cuda', dtype=torch.float16):
